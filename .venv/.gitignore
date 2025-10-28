@@ -1,0 +1,38 @@
+# ---- Python ----
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+*.sqlite3
+*.db
+
+# ---- Virtual Environments ----
+.venv/
+env/
+venv/
+ENV/
+
+# ---- IDEs e Editores ----
+.vscode/
+.idea/
+*.iml
+
+# ---- Sistema Operacional ----
+.DS_Store
+Thumbs.db
+
+# ---- PyInstaller / Build / Dist ----
+build/
+dist/
+*.spec
+
+# ---- Configurações locais ----
+.env
+.settings/
+.cache/
+
+# ---- Testes ----
+.coverage
+htmlcov/
+pytest_cache/
