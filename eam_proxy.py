@@ -19,13 +19,13 @@ app = FastAPI(title="EAM Proxy + IoT Integration", version="2.0")
 devices_status = {}
 
 # ==============================================================
-# 🔁 Rota SOAP → Proxy entre o App Desktop e o EAM Cloud
+# 🔁 Proxy SOAP → App Desktop → EAM Cloud
 # ==============================================================
 
 @app.post("/eamproxy")
 async def eam_proxy(request: Request):
     """
-    Recebe requisições SOAP do App (Dashboard Simulador) e as encaminha
+    Recebe requisições SOAP do App Desktop e as encaminha
     ao EAM Cloud adicionando o API Key.
     """
     xml_body = await request.body()
@@ -44,7 +44,7 @@ async def eam_proxy(request: Request):
     print(xml_body.decode("utf-8")[:600])
     print("------------------------------------------------")
 
-    async with httpx.AsyncClient(verify=True, timeout=60) as client:
+    async with httpx.AsyncClient(verify=False, timeout=60) as client:
         try:
             resp = await client.post(EAM_URL, content=xml_body, headers=headers_out)
             print(f"📬 Resposta EAM: {resp.status_code}")
@@ -71,7 +71,7 @@ async def eam_proxy(request: Request):
 async def receive_event(request: Request):
     """
     Recebe dados do ESP32 (status do dispositivo).
-    Exemplo JSON recebido:
+    Exemplo JSON:
     {
         "device": "MOTOR_A",
         "status": "ok"
@@ -88,23 +88,15 @@ async def receive_event(request: Request):
     return {"message": "Evento recebido com sucesso!"}
 
 # ==============================================================
-# 📈 Endpoint → Consulta status atual de um dispositivo
+# 📈 Endpoint → Consulta status do dispositivo
 # ==============================================================
 
 @app.get("/status/{device_id}")
 async def get_status(device_id: str):
-    """
-    Retorna o status e o último horário de atualização do dispositivo.
-    """
     info = devices_status.get(device_id)
     if not info:
-        # Mesmo que não exista, retorna HTTP 200 (evita 404 no Dashboard)
         return JSONResponse(
-            content={
-                "device": device_id,
-                "status": "desconhecido",
-                "online": False
-            },
+            content={"device": device_id, "status": "desconhecido", "online": False},
             status_code=200
         )
 
@@ -130,9 +122,10 @@ def root():
     return {"status": "ok", "message": "EAM Proxy + IoT rodando com sucesso."}
 
 # ==============================================================
-# 🚀 Execução local
+# 🚀 Execução local (para debug)
 # ==============================================================
 
 if __name__ == "__main__":
     import uvicorn
+    print("🚀 Iniciando servidor local em http://127.0.0.1:8080 ...")
     uvicorn.run(app, host="0.0.0.0", port=8080)
