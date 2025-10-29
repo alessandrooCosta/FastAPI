@@ -1,131 +1,83 @@
-from fastapi import FastAPI, Request, Response
+# ==============================================================
+# 🌐 API IoT Cloud - Conexão entre ESP32 e App Desktop
+# ==============================================================
+
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from datetime import datetime, timedelta
-import httpx
+
+app = FastAPI(title="IoT Cloud API", version="1.0")
 
 # ==============================================================
-# ⚙️ Configurações gerais
-# ==============================================================
-
-EAM_URL = "https://us1.eam.hxgnsmartcloud.com/axis/services/EWSConnector"
-API_KEY = "aea718747d-b616-40bd-ade4-9931dc98de38"
-
-app = FastAPI(title="EAM Proxy + IoT Integration", version="2.0")
-
-# ==============================================================
-# 📊 Banco em memória: status dos dispositivos IoT
+# 📊 Armazenamento em memória dos status (pode futuramente usar Redis ou DB)
 # ==============================================================
 
 devices_status = {}
 
 # ==============================================================
-# 🔁 Proxy SOAP → App Desktop → EAM Cloud
-# ==============================================================
-
-@app.post("/eamproxy")
-async def eam_proxy(request: Request):
-    """
-    Recebe requisições SOAP do App Desktop e as encaminha
-    ao EAM Cloud adicionando o API Key.
-    """
-    xml_body = await request.body()
-    headers_in = dict(request.headers)
-
-    headers_out = {
-        "Content-Type": headers_in.get("content-type", "text/xml;charset=UTF-8"),
-        "SOAPAction": headers_in.get("soapaction", ""),
-        "x-api-key": API_KEY,
-    }
-
-    print("\n📨 Repassando requisição SOAP para EAM...")
-    print(f"🔗 Destino: {EAM_URL}")
-    print(f"📋 Headers: {headers_out}")
-    print("🧾 XML (trecho):")
-    print(xml_body.decode("utf-8")[:600])
-    print("------------------------------------------------")
-
-    async with httpx.AsyncClient(verify=False, timeout=60) as client:
-        try:
-            resp = await client.post(EAM_URL, content=xml_body, headers=headers_out)
-            print(f"📬 Resposta EAM: {resp.status_code}")
-            print(resp.text[:400])
-            print("------------------------------------------------")
-            return Response(
-                content=resp.text,
-                status_code=resp.status_code,
-                media_type=resp.headers.get("content-type", "text/xml"),
-            )
-        except Exception as e:
-            print(f"❌ Erro ao enviar SOAP: {e}")
-            return Response(
-                content=f"<error>Proxy error: {e}</error>",
-                status_code=500,
-                media_type="text/xml",
-            )
-
-# ==============================================================
-# 🌐 Endpoint IoT → Recebe eventos do ESP32
+# 📡 ESP32 envia eventos aqui
 # ==============================================================
 
 @app.post("/event")
 async def receive_event(request: Request):
-    """
-    Recebe dados do ESP32 (status do dispositivo).
-    Exemplo JSON:
-    {
-        "device": "MOTOR_A",
-        "status": "ok"
-    }
-    """
+    """Recebe dados de status enviados pelo ESP32"""
     data = await request.json()
     device = data.get("device", "desconhecido")
     status = data.get("status", "sem_status")
-    timestamp = datetime.now()
 
-    devices_status[device] = {"status": status, "last_update": timestamp}
+    devices_status[device] = {
+        "status": status,
+        "last_update": datetime.now().isoformat()
+    }
 
-    print(f"\n📡 {device} → {status} ({timestamp})")
-    return {"message": "Evento recebido com sucesso!"}
+    print(f"📡 Evento recebido → {device} = {status}")
+    return {"message": "Evento recebido com sucesso", "device": device, "status": status}
+
 
 # ==============================================================
-# 📈 Endpoint → Consulta status do dispositivo
+# 📈 App Desktop consulta o status do dispositivo
 # ==============================================================
 
 @app.get("/status/{device_id}")
 async def get_status(device_id: str):
+    """Retorna o status atual de um dispositivo"""
     info = devices_status.get(device_id)
+
     if not info:
         return JSONResponse(
-            content={"device": device_id, "status": "desconhecido", "online": False},
+            content={
+                "device": device_id,
+                "status": "desconhecido",
+                "online": False
+            },
             status_code=200
         )
 
-    delta = datetime.now() - info["last_update"]
-    online = delta < timedelta(seconds=10)
+    delta = datetime.now() - datetime.fromisoformat(info["last_update"])
+    online = delta < timedelta(seconds=15)
 
-    return JSONResponse(
-        content={
-            "device": device_id,
-            "status": info["status"],
-            "last_update": info["last_update"].isoformat(),
-            "online": online
-        },
-        status_code=200
-    )
+    return {
+        "device": device_id,
+        "status": info["status"],
+        "last_update": info["last_update"],
+        "online": online
+    }
+
 
 # ==============================================================
-# 🔍 Endpoint básico de teste
+# 🔍 Endpoint básico de verificação
 # ==============================================================
 
 @app.get("/")
 def root():
-    return {"status": "ok", "message": "EAM Proxy + IoT rodando com sucesso."}
+    return {"status": "ok", "message": "API IoT na nuvem ativa e recebendo eventos."}
+
 
 # ==============================================================
-# 🚀 Execução local (para debug)
+# 🚀 Execução local (opcional)
 # ==============================================================
 
 if __name__ == "__main__":
     import uvicorn
-    print("🚀 Iniciando servidor local em http://127.0.0.1:8080 ...")
+    print("🚀 Executando IoT Cloud API em http://127.0.0.1:8080 ...")
     uvicorn.run(app, host="0.0.0.0", port=8080)
